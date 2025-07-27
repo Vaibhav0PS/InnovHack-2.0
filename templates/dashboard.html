@@ -3,320 +3,739 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Advanced YOLOv11 Video Analytics Dashboard</title>
-    <!-- Bootstrap CSS for layout -->
+    <title>YOLOv11 Video Analytics Dashboard</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <!-- Chart.js for graphs -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body {
-            padding: 20px;
+            padding-top: 20px;
             background-color: #f8f9fa;
         }
-        #video-container {
+        .video-container {
             position: relative;
             width: 100%;
-            max-width: 1280px; /* Adjust based on your video resolution */
+            /* Max width can be adjusted based on typical video feed size */
+            /* max-width: 1280px; */
             margin: auto;
-            border: 1px solid #ddd;
+            background-color: #000; /* Background for video container */
             border-radius: 5px;
-            overflow: hidden;
-            background-color: #000;
+            overflow: hidden; /* Ensures child img respects border radius */
         }
-        #video-feed {
+        #videoFeed {
             width: 100%;
             height: auto;
             display: block;
         }
-        .chart-container {
-            position: relative;
-            height: 300px;
-            margin-top: 20px;
-        }
-        .stats-card {
-            text-align: center;
-            padding: 15px;
+        .card {
             margin-bottom: 20px;
-            border-radius: 5px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            background-color: white;
+            box-shadow: 0 2px 4px rgba(0,0,0,.1);
+            transition: box-shadow 0.3s ease;
         }
-        .stats-number {
-            font-size: 2rem;
-            font-weight: bold;
-            color: #007bff;
-        }
-        .stats-label {
-            font-size: 0.9rem;
-            color: #6c757d;
+        .card:hover {
+             box-shadow: 0 4px 8px rgba(0,0,0,.15);
         }
         .alert-item {
-            padding: 10px;
-            margin-bottom: 5px;
-            border-radius: 3px;
+            padding: 8px 12px;
+            margin-bottom: 8px;
+            border-radius: 4px;
+            font-size: 0.9rem;
         }
         .alert-high { background-color: #f8d7da; border-left: 5px solid #dc3545; }
         .alert-warning { background-color: #fff3cd; border-left: 5px solid #ffc107; }
         .alert-info { background-color: #d1ecf1; border-left: 5px solid #17a2b8; }
+
+        /* Chart container */
+        #chartContainer {
+            position: relative;
+            height: 300px; /* Adjust height as needed */
+        }
+
+        /* Status badges */
+        .status-badge {
+            font-size: 0.85em;
+        }
+        .badge-model-loaded { background-color: #28a745; } /* Green */
+        .badge-model-not-loaded { background-color: #dc3545; } /* Red */
+        .badge-device-cpu { background-color: #6c757d; } /* Gray */
+        .badge-device-cuda { background-color: #007bff; } /* Blue */
+
+        /* Loading spinner for chart */
+        .chart-spinner {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: none; /* Hidden by default */
+        }
+
+        /* Feedback message for config */
+        #configFeedback {
+            margin-top: 10px;
+            padding: 5px 10px;
+            border-radius: 4px;
+            display: none; /* Hidden by default */
+        }
+        .feedback-success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .feedback-error {
+             background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
     </style>
 </head>
 <body>
     <div class="container-fluid">
-        <h1 class="mb-4">Advanced YOLOv11 Video Analytics Dashboard</h1>
+        <h1 class="mb-4">YOLOv11 Video Analytics Dashboard</h1>
 
         <!-- Video Feed Row -->
         <div class="row mb-4">
             <div class="col-12">
-                <div id="video-container">
-                    <img id="video-feed" src="{{ url_for('video_feed') }}" alt="Video Feed">
+                <div class="card">
+                    <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                        <span>Live Video Feed</span>
+                        <span id="systemStatusHeader" class="badge status-badge">Loading...</span>
+                    </div>
+                    <div class="card-body p-0"> <!-- Remove padding for video -->
+                        <div class="video-container">
+                            <img id="videoFeed" src="{{ url_for('video_feed') }}" alt="Video Feed">
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- Stats and Alerts Row -->
-        <div class="row mb-4">
-            <!-- Stats Cards -->
-            <div class="col-md-6 col-lg-3">
-                <div class="stats-card">
-                    <div class="stats-number" id="total-objects">0</div>
-                    <div class="stats-label">Total Objects</div>
-                </div>
-            </div>
-            <div class="col-md-6 col-lg-3">
-                <div class="stats-card">
-                    <div class="stats-number" id="active-tracks">0</div>
-                    <div class="stats-label">Active Tracks</div>
-                </div>
-            </div>
-             <div class="col-md-6 col-lg-3">
-                <div class="stats-card">
-                    <div class="stats-number" id="device-info">CPU</div>
-                    <div class="stats-label">Processing Device</div>
-                </div>
-            </div>
-             <div class="col-md-6 col-lg-3">
-                <div class="stats-card">
-                    <div class="stats-number" id="model-info">YOLOv11</div>
-                    <div class="stats-label">Model</div>
-                </div>
-            </div>
-        </div>
-
-        <div class="row mb-4">
-            <!-- Alerts -->
-            <div class="col-md-12 col-lg-4">
-                <h4>Recent Alerts</h4>
-                <div id="alerts-container" style="max-height: 300px; overflow-y: auto; background-color: white; padding: 10px; border-radius: 5px;">
-                     <p class="text-muted">No alerts yet.</p>
-                </div>
-            </div>
-
-            <!-- Current Detections -->
-            <div class="col-md-12 col-lg-4">
-                <h4>Current Detections</h4>
-                <div id="current-detections" class="d-flex flex-wrap">
-                    <p class="text-muted">No objects detected.</p>
-                </div>
-            </div>
-
-             <!-- Detection Zones -->
-            <div class="col-md-12 col-lg-4">
-                <h4>Detection Zones</h4>
-                <ul id="zones-list" class="list-group">
-                    <li class="list-group-item text-muted">No zones configured.</li>
-                </ul>
-            </div>
-        </div>
-
-        <!-- Graphs Row -->
         <div class="row">
-            <div class="col-12">
-                <h4>Object Detection Over Time</h4>
-                <div class="chart-container">
-                    <canvas id="analytics-chart"></canvas>
+            <!-- Left Column: Analytics & Alerts -->
+            <div class="col-lg-6">
+                <div class="card">
+                    <div class="card-header bg-success text-white">
+                        Real-time Analytics
+                    </div>
+                    <div class="card-body">
+                        <h5>Current Detections</h5>
+                        <ul id="currentDetections" class="list-group list-group-flush mb-4">
+                            <li class="list-group-item text-muted">Loading...</li>
+                        </ul>
+
+                        <h5>Object Detections Rate (per 30s)</h5>
+                         <div id="chartContainer">
+                            <canvas id="analyticsChart"></canvas>
+                             <div id="chartSpinner" class="spinner-border chart-spinner text-primary" role="status">
+                              <span class="visually-hidden">Loading chart...</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header bg-warning text-dark">
+                        Recent Alerts
+                    </div>
+                    <div class="card-body">
+                        <div id="alertList">
+                            <p class="text-muted">Loading alerts...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column: Configuration & System Info -->
+            <div class="col-lg-6">
+                 <div class="card">
+                    <div class="card-header bg-info text-white">
+                        System Configuration
+                    </div>
+                    <div class="card-body">
+                        <form id="configForm">
+                            <div class="mb-3">
+                                <label for="confidenceThreshold" class="form-label">Confidence Threshold</label>
+                                <input type="number" class="form-control" id="confidenceThreshold" min="0" max="1" step="0.05" value="0.5" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="detectionInterval" class="form-label">Detection Interval (frames)</label>
+                                <input type="number" class="form-control" id="detectionInterval" min="1" max="10" value="3" required>
+                                <div class="form-text">Process every Nth frame.</div>
+                            </div>
+                             <div class="mb-3">
+                                <label class="form-label">Alert Thresholds</label>
+                                <div id="alertThresholdsContainer">
+                                    <!-- Will be populated dynamically -->
+                                </div>
+                                 <small class="form-text text-muted">Set minimum count to trigger alerts.</small>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Detection Zones</label>
+                                <div id="zoneList">
+                                    <!-- Will be populated dynamically -->
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Update Configuration</button>
+                             <div id="configFeedback"></div> <!-- Feedback message container -->
+                        </form>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header bg-secondary text-white">
+                        System Information
+                    </div>
+                    <div class="card-body">
+                        <ul class="list-group list-group-flush" id="systemStatus">
+                            <li class="list-group-item text-muted">Loading system status...</li>
+                        </ul>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        // --- Chart.js Initialization ---
-        const ctx = document.getElementById('analytics-chart').getContext('2d');
-        let analyticsChart;
+        // --- Configuration ---
+        const UPDATE_INTERVAL_MS = 2000; // Update analytics/alerts every 2 seconds
+        const MAX_ALERTS_DISPLAYED = 10;
+        const MAX_DATA_POINTS = 20; // Limit data points on the chart for performance/clarity
 
-        function initializeChart(labels, datasets) {
-            if (analyticsChart) {
-                analyticsChart.destroy(); // Destroy existing chart if any
+        // --- Global Variables ---
+        let analyticsChart = null;
+        let chartDataCache = {}; // Cache last known good data to prevent chart flicker
+
+        // --- DOM Elements ---
+        const currentDetectionsEl = document.getElementById('currentDetections');
+        const alertListEl = document.getElementById('alertList');
+        const configFormEl = document.getElementById('configForm');
+        const confidenceThresholdEl = document.getElementById('confidenceThreshold');
+        const detectionIntervalEl = document.getElementById('detectionInterval');
+        const zoneListEl = document.getElementById('zoneList');
+        const alertThresholdsContainerEl = document.getElementById('alertThresholdsContainer');
+        const systemStatusEl = document.getElementById('systemStatus');
+        const systemStatusHeaderEl = document.getElementById('systemStatusHeader');
+        const configFeedbackEl = document.getElementById('configFeedback');
+        const chartSpinnerEl = document.getElementById('chartSpinner');
+
+        // --- Initialization ---
+        document.addEventListener('DOMContentLoaded', function () {
+            fetchConfig();
+            fetchAnalytics(); // Initial fetch
+            fetchAlerts();    // Initial fetch
+            fetchSystemStatus(); // Initial fetch
+
+            // Set up periodic updates
+            setInterval(fetchAnalytics, UPDATE_INTERVAL_MS);
+            setInterval(fetchAlerts, UPDATE_INTERVAL_MS);
+            setInterval(fetchSystemStatus, UPDATE_INTERVAL_MS * 3); // Update status less frequently
+
+            // Set up form submission
+            configFormEl.addEventListener('submit', handleConfigSubmit);
+        });
+
+        // --- Fetch Functions ---
+        async function fetchAnalytics() {
+            try {
+                const response = await fetch('/analytics');
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const data = await response.json();
+                updateAnalyticsDisplay(data);
+            } catch (error) {
+                console.error('Error fetching analytics:', error);
+                currentDetectionsEl.innerHTML = '<li class="list-group-item text-danger">Error loading detections.</li>';
+                 // Keep chart with last known data or show error state
+                 // updateAnalyticsChart({}); // Pass empty to potentially show "No data"
             }
-            analyticsChart = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    // labels will be timestamps
-                    datasets: datasets.map((data, index) => ({
-                        label: labels[index],
-                        data: data,
-                        borderColor: getRandomColor(), // Function to get random color
-                        backgroundColor: 'rgba(0, 0, 0, 0)', // Transparent fill
-                        tension: 0.1, // Smooth lines
-                        pointRadius: 3
-                    }))
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        x: {
-                            type: 'time',
-                            time: {
-                                unit: 'second',
-                                tooltipFormat: 'MMM d, yyyy HH:mm:ss'
-                            },
-                            title: {
-                                display: true,
-                                text: 'Time'
-                            }
-                        },
-                        y: {
-                             beginAtZero: true,
-                             title: {
-                                display: true,
-                                text: 'Count'
-                            }
-                        }
-                    },
-                    plugins: {
-                        legend: {
-                            position: 'top',
-                        },
-                        tooltip: {
-                            mode: 'index',
-                            intersect: false
-                        }
-                    },
-                    animation: {
-                        duration: 0 // Disable animation for smoother real-time updates
+        }
+
+        async function fetchAlerts() {
+            try {
+                const response = await fetch('/alerts');
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const alerts = await response.json();
+                updateAlertsDisplay(alerts);
+            } catch (error) {
+                console.error('Error fetching alerts:', error);
+                alertListEl.innerHTML = '<p class="text-danger">Error loading alerts.</p>';
+            }
+        }
+
+        async function fetchConfig() {
+            try {
+                const response = await fetch('/config');
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const config = await response.json();
+                updateConfigForm(config);
+            } catch (error) {
+                console.error('Error fetching config:', error);
+                 // Disable form or show error?
+                 configFormEl.innerHTML += '<div class="alert alert-danger mt-2">Failed to load configuration.</div>';
+            }
+        }
+
+        async function fetchSystemStatus() {
+            try {
+                const response = await fetch('/health');
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const status = await response.json();
+                updateSystemStatusDisplay(status);
+            } catch (error) {
+                console.error('Error fetching system status:', error);
+                updateSystemStatusDisplay({ status: 'error', error: error.message });
+            }
+        }
+
+        // --- Update Display Functions ---
+
+        function updateAnalyticsDisplay(data) {
+            // --- Update Current Detections ---
+            currentDetectionsEl.innerHTML = '';
+            if (Object.keys(data.current_detections).length === 0) {
+                const li = document.createElement('li');
+                li.className = 'list-group-item text-muted';
+                li.textContent = 'No objects detected';
+                currentDetectionsEl.appendChild(li);
+            } else {
+                // Sort by count descending for better UX
+                const sortedDetections = Object.entries(data.current_detections)
+                                               .sort((a, b) => b[1] - a[1]);
+                sortedDetections.forEach(([label, count]) => {
+                    const li = document.createElement('li');
+                    li.className = 'list-group-item d-flex justify-content-between align-items-center';
+                    li.innerHTML = `
+                        <span>${label}</span>
+                        <span class="badge bg-primary rounded-pill">${count}</span>
+                    `;
+                    currentDetectionsEl.appendChild(li);
+                });
+            }
+
+            // --- Update Chart ---
+            // Pass the entire time_series data, the chart function handles it
+            updateAnalyticsChart(data.time_series);
+        }
+
+        function updateAnalyticsChart(timeSeriesData) {
+
+            const ctx = document.getElementById('analyticsChart').getContext('2d');
+
+            // Show spinner while processing (optional, might be too quick)
+            // chartSpinnerEl.style.display = 'block';
+
+            try {
+                 // Handle empty data
+                if (!timeSeriesData || Object.keys(timeSeriesData).length === 0) {
+                     if (analyticsChart) {
+                        analyticsChart.destroy();
+                        analyticsChart = null;
+                    }
+                    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+                    ctx.font = "16px Arial";
+                    ctx.textAlign = "center";
+                    ctx.fillStyle = "#6c757d"; // Bootstrap muted color
+                    ctx.fillText("No detection data available yet", ctx.canvas.width / 2, ctx.canvas.height / 2);
+                    chartDataCache = {}; // Clear cache
+                    return;
+                }
+
+                // Prepare data for Chart.js
+                const labels = [];
+                const datasets = [];
+
+                // Get all unique timestamps and sort them
+                const allTimestamps = new Set();
+                for (const seriesData of Object.values(timeSeriesData)) {
+                    for (const point of seriesData) {
+                        // Ensure timestamp is treated as a string for consistency if needed, or convert if it's numeric
+                        allTimestamps.add(point.time);
                     }
                 }
+                // Sort timestamps chronologically (assuming ISO string format)
+                const sortedTimestamps = Array.from(allTimestamps).sort();
+
+                // Limit data points displayed
+                let displayTimestamps = sortedTimestamps;
+                if (sortedTimestamps.length > MAX_DATA_POINTS) {
+                    displayTimestamps = sortedTimestamps.slice(-MAX_DATA_POINTS);
+                }
+
+                // Format labels (e.g., HH:MM)
+                const formattedLabels = displayTimestamps.map(ts_str => {
+                    const date = new Date(ts_str);
+                    // Check if date is valid
+                    if (isNaN(date.getTime())) {
+                        console.warn("Invalid date found in time series data:", ts_str);
+                        return "Invalid Time";
+                    }
+                    return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+                });
+
+                let anyData = false; // Flag to check if any series has data
+
+                // Create a dataset for each object class
+                for (const [label, seriesData] of Object.entries(timeSeriesData)) {
+                    // Create a map for quick lookup of count by timestamp for this label
+                    const countMap = {};
+                    seriesData.forEach(point => {
+                        countMap[point.time] = point.count;
+                    });
+
+                    // Map display timestamps to counts, defaulting to 0
+                    const dataPoints = displayTimestamps.map(ts_str => {
+                        return countMap[ts_str] || 0;
+                    });
+
+                    // Check if this series has any non-zero data
+                    if (dataPoints.some(count => count > 0)) {
+                        anyData = true;
+                    }
+
+                    // Use a consistent color palette or generate
+                    const color = getColorForLabel(label);
+
+                    datasets.push({
+                        label: label,
+                        data: dataPoints,
+                        borderColor: color,
+                        backgroundColor: color.replace(')', ', 0.1)').replace('rgb', 'rgba'), // Add transparency
+                        tension: 0.2, // Smooth lines slightly
+                        fill: false
+                    });
+                }
+
+                // If no series had any data, show "No data" message
+                if (!anyData) {
+                     if (analyticsChart) {
+                        analyticsChart.destroy();
+                        analyticsChart = null;
+                    }
+                    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+                    ctx.font = "16px Arial";
+                    ctx.textAlign = "center";
+                    ctx.fillStyle = "#6c757d";
+                    ctx.fillText("No detections recorded in the selected time window", ctx.canvas.width / 2, ctx.canvas.height / 2);
+                    chartDataCache = timeSeriesData; // Cache current (empty-ish) data
+                    return;
+                }
+
+                // Destroy existing chart if data structure changes significantly or on first load
+                // A more robust way is to update data if structure is the same, destroy/recreate if not.
+                // For simplicity, we'll recreate if datasets change in number or labels.
+                const needsRecreate = !analyticsChart ||
+                                      analyticsChart.data.datasets.length !== datasets.length ||
+                                      JSON.stringify(analyticsChart.data.datasets.map(d => d.label)) !== JSON.stringify(datasets.map(d => d.label));
+
+                if (needsRecreate) {
+                    if (analyticsChart) {
+                        analyticsChart.destroy();
+                    }
+                     analyticsChart = new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: formattedLabels,
+                            datasets: datasets
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            interaction: {
+                                mode: 'index', // Show all tooltips for the X value
+                                intersect: false
+                            },
+                            scales: {
+                                y: {
+                                    beginAtZero: true,
+                                    title: {
+                                        display: true,
+                                        text: 'Detections per 30s'
+                                    },
+                                    ticks: {
+                                         precision: 0 // Only show whole numbers
+                                    }
+                                },
+                                x: {
+                                    title: {
+                                        display: true,
+                                        text: 'Time'
+                                    }
+                                }
+                            },
+                            plugins: {
+                                legend: {
+                                    display: true,
+                                    position: 'top', // 'top', 'left', 'bottom', 'right'
+                                },
+                                tooltip: {
+                                    callbacks: {
+                                        label: function(context) {
+                                            let label = context.dataset.label || '';
+                                            if (label) {
+                                                label += ': ';
+                                            }
+                                            if (context.parsed.y !== null) {
+                                                label += context.parsed.y; // Show count
+                                            }
+                                            return label;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    });
+                } else {
+                    // Update existing chart data
+                    analyticsChart.data.labels = formattedLabels;
+                    analyticsChart.data.datasets = datasets; // This replaces the datasets
+                    analyticsChart.update(); // Animate the update
+                }
+                chartDataCache = timeSeriesData; // Cache good data
+
+            } catch (error) {
+                console.error("Error updating analytics chart:", error);
+                 if (analyticsChart) {
+                    analyticsChart.destroy();
+                    analyticsChart = null;
+                }
+                ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+                ctx.font = "16px Arial";
+                ctx.textAlign = "center";
+                ctx.fillStyle = "#dc3545"; // Red for error
+                ctx.fillText("Error plotting chart", ctx.canvas.width / 2, ctx.canvas.height / 2);
+                 chartDataCache = {}; // Clear cache on error
+            } finally {
+                // Hide spinner
+                // chartSpinnerEl.style.display = 'none';
+            }
+        }
+
+
+        function updateAlertsDisplay(alerts) {
+            alertListEl.innerHTML = '';
+            if (!alerts || alerts.length === 0) {
+                alertListEl.innerHTML = '<p class="text-muted">No recent alerts.</p>';
+                return;
+            }
+
+            // Limit displayed alerts
+            const alertsToShow = alerts.slice(-MAX_ALERTS_DISPLAYED);
+
+            alertsToShow.forEach(alert => {
+                const alertDiv = document.createElement('div');
+                alertDiv.className = `alert-item alert-${alert.severity || 'info'}`;
+                // Format timestamp
+                let alertTimeStr = 'Unknown Time';
+                if (alert.timestamp) {
+                    const alertDate = new Date(alert.timestamp);
+                     if (!isNaN(alertDate.getTime())) {
+                        alertTimeStr = alertDate.toLocaleTimeString();
+                     }
+                }
+                alertDiv.innerHTML = `
+                    <strong>[${alert.type || 'Alert'}]</strong> ${alert.message || 'No message'}
+                    <small class="text-muted d-block mt-1">${alertTimeStr}</small>
+                `;
+                alertListEl.appendChild(alertDiv);
             });
         }
 
-        function getRandomColor() {
-            const letters = '0123456789ABCDEF';
-            let color = '#';
-            for (let i = 0; i < 6; i++) {
-                color += letters[Math.floor(Math.random() * 16)];
+        function updateConfigForm(config) {
+            if (config.confidence_threshold !== undefined) {
+                confidenceThresholdEl.value = config.confidence_threshold;
             }
+            // Note: DETECTION_INTERVAL is not part of the standard /config endpoint response in the provided backend.
+            // You would need to add it to the backend's /config GET response and /config POST handler.
+            // For now, we can leave it or assume a default. Let's assume it's managed differently or add a note.
+            // If your backend supports it, uncomment and use:
+            // if (config.detection_interval !== undefined) {
+            //     detectionIntervalEl.value = config.detection_interval;
+            // }
+
+            // --- Populate Alert Thresholds ---
+            alertThresholdsContainerEl.innerHTML = '';
+            if (config.alert_thresholds) {
+                 for (const [objClass, threshold] of Object.entries(config.alert_thresholds)) {
+                    const div = document.createElement('div');
+                    div.className = 'input-group input-group-sm mb-2';
+                    div.innerHTML = `
+                        <span class="input-group-text">${objClass}</span>
+                        <input type="number" class="form-control alert-threshold-input" data-class="${objClass}" min="0" value="${threshold}">
+                    `;
+                    alertThresholdsContainerEl.appendChild(div);
+                }
+            } else {
+                 alertThresholdsContainerEl.innerHTML = '<small class="text-muted">No thresholds configured.</small>';
+            }
+
+            // --- Populate Zones List ---
+            zoneListEl.innerHTML = '';
+            if (config.zones && Array.isArray(config.zones)) {
+                config.zones.forEach((zone, index) => {
+                    const div = document.createElement('div');
+                    div.className = 'form-check mb-2';
+                    div.innerHTML = `
+                        <input class="form-check-input zone-toggle" type="checkbox" value="${index}" id="zone${index}" ${zone.active ? 'checked' : ''}>
+                        <label class="form-check-label" for="zone${index}">
+                            ${zone.name}
+                        </label>
+                    `;
+                    zoneListEl.appendChild(div);
+                });
+            } else {
+                 zoneListEl.innerHTML = '<small class="text-muted">No zones configured.</small>';
+            }
+        }
+
+        function updateSystemStatusDisplay(status) {
+            systemStatusEl.innerHTML = '';
+            systemStatusHeaderEl.textContent = 'Unknown';
+            systemStatusHeaderEl.className = 'badge status-badge bg-secondary'; // Default
+
+            if (status.status === 'healthy') {
+                systemStatusHeaderEl.textContent = 'Healthy';
+                systemStatusHeaderEl.className = 'badge status-badge bg-success';
+
+                const items = [
+                    { label: 'Model', value: status.model_loaded ? 'Loaded' : 'Not Loaded', cls: status.model_loaded ? 'text-success' : 'text-danger' },
+                    { label: 'Device', value: status.device || 'Unknown', cls: status.device === 'cuda' ? 'text-primary' : 'text-secondary' },
+                    { label: 'Frame Queue', value: `${status.queue_sizes?.frame_queue ?? 'N/A'} / {{ MAX_QUEUE_SIZE }}` },
+                    { label: 'Processed Queue', value: `${status.queue_sizes?.processed_frame_queue ?? 'N/A'} / {{ MAX_QUEUE_SIZE }}` },
+                    { label: 'Last Update', value: status.timestamp ? new Date(status.timestamp).toLocaleTimeString() : 'N/A' },
+                ];
+                items.forEach(item => {
+                     const li = document.createElement('li');
+                     li.className = 'list-group-item d-flex justify-content-between align-items-center';
+                     li.innerHTML = `
+                        <span>${item.label}</span>
+                        <span class="${item.cls || ''}">${item.value}</span>
+                     `;
+                     systemStatusEl.appendChild(li);
+                });
+            } else if (status.status === 'error') {
+                systemStatusHeaderEl.textContent = 'Error';
+                systemStatusHeaderEl.className = 'badge status-badge bg-danger';
+                const li = document.createElement('li');
+                li.className = 'list-group-item text-danger';
+                li.textContent = `Error: ${status.error || 'Unknown error'}`;
+                systemStatusEl.appendChild(li);
+            } else {
+                systemStatusHeaderEl.textContent = 'Unknown';
+                systemStatusHeaderEl.className = 'badge status-badge bg-secondary';
+                 const li = document.createElement('li');
+                li.className = 'list-group-item text-muted';
+                li.textContent = 'Unable to fetch status.';
+                systemStatusEl.appendChild(li);
+            }
+         }
+
+
+        // --- Event Handlers ---
+        async function handleConfigSubmit(event) {
+            event.preventDefault();
+
+            // Collect form data
+            const newConfig = {
+                confidence_threshold: parseFloat(confidenceThresholdEl.value),
+                // detection_interval: parseInt(detectionIntervalEl.value), // Needs backend support
+                alert_thresholds: {},
+                zones: [] // Needs backend support to get full zone config or send back
+            };
+
+            // Collect alert thresholds
+            document.querySelectorAll('.alert-threshold-input').forEach(input => {
+                const objClass = input.dataset.class;
+                const value = parseInt(input.value, 10);
+                if (!isNaN(value) && value >= 0) {
+                    newConfig.alert_thresholds[objClass] = value;
+                }
+            });
+
+            // Collect zone states (sends back active state based on checkbox)
+             const zoneToggles = document.querySelectorAll('.zone-toggle');
+             const zoneStates = Array.from(zoneToggles).map(cb => cb.checked);
+             // This assumes the backend expects an array of booleans matching the order
+             // Or you need to reconstruct the full zone object. Depends on backend /config POST handler.
+             // Example sending just active states:
+             // newConfig.zone_active_states = zoneStates;
+
+             // Show feedback
+             showConfigFeedback('Saving configuration...', 'info');
+
+             try {
+                const response = await fetch('/config', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(newConfig)
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+                }
+
+                const result = await response.json();
+                if (result.status === 'success') {
+                    showConfigFeedback('Configuration updated successfully!', 'success');
+                    // Optionally, re-fetch config to reflect changes if needed immediately
+                    // fetchConfig();
+                } else {
+                    showConfigFeedback(`Update failed: ${result.message || 'Unknown reason'}`, 'error');
+                }
+            } catch (error) {
+                console.error('Error updating config:', error);
+                showConfigFeedback(`Error saving configuration: ${error.message}`, 'error');
+            }
+        }
+
+         function showConfigFeedback(message, type) {
+            configFeedbackEl.textContent = message;
+            configFeedbackEl.className = 'mt-2'; // Reset classes
+            if (type === 'success') {
+                configFeedbackEl.classList.add('feedback-success');
+            } else if (type === 'error') {
+                configFeedbackEl.classList.add('feedback-error');
+            } else {
+                 configFeedbackEl.classList.add('alert', 'alert-info'); // For 'info' like "Saving..."
+            }
+            configFeedbackEl.style.display = 'block';
+
+            // Auto-hide success message after a few seconds
+            if (type === 'success') {
+                setTimeout(() => {
+                    configFeedbackEl.style.display = 'none';
+                }, 3000);
+            }
+         }
+
+
+        // --- Helper Functions ---
+        // Simple color generator for chart lines based on label
+        const labelColorMap = {}; // Cache colors per label
+        const colorPalette = [
+            'rgb(255, 99, 132)',   // Red
+            'rgb(54, 162, 235)',   // Blue
+            'rgb(255, 206, 86)',   // Yellow
+            'rgb(75, 192, 192)',   // Teal
+            'rgb(153, 102, 255)',  // Purple
+            'rgb(255, 159, 64)',   // Orange
+            'rgb(199, 199, 199)',  // Grey
+            'rgb(83, 109, 254)',   // Indigo
+            'rgb(0, 230, 118)',    // Green A400
+            'rgb(255, 145, 0)'     // Deep Orange A700
+        ];
+        let colorIndex = 0;
+
+        function getColorForLabel(label) {
+            if (labelColorMap[label]) {
+                return labelColorMap[label];
+            }
+            const color = colorPalette[colorIndex % colorPalette.length];
+            labelColorMap[label] = color;
+            colorIndex++;
             return color;
         }
-
-        // --- Data Fetching and Updating ---
-        const API_BASE = '/'; // Base URL for API endpoints
-
-        // Fetch and update analytics data (counts, graph)
-        async function fetchAnalytics() {
-            try {
-                const response = await fetch(`${API_BASE}analytics`);
-                const data = await response.json();
-
-                // Update stats cards
-                document.getElementById('total-objects').textContent = data.total_objects || 0;
-                document.getElementById('active-tracks').textContent = data.active_tracks || 0;
-                document.getElementById('device-info').textContent = data.device || 'Unknown';
-                document.getElementById('model-info').textContent = data.model_type || 'Unknown';
-
-                 // Update current detections
-                const detectionsContainer = document.getElementById('current-detections');
-                detectionsContainer.innerHTML = ''; // Clear previous
-                if (data.current_detections && Object.keys(data.current_detections).length > 0) {
-                    for (const [label, count] of Object.entries(data.current_detections)) {
-                        const badge = document.createElement('span');
-                        badge.className = 'badge bg-primary me-2 mb-2';
-                        badge.textContent = `${label}: ${count}`;
-                        detectionsContainer.appendChild(badge);
-                    }
-                } else {
-                     detectionsContainer.innerHTML = '<p class="text-muted">No objects detected.</p>';
-                }
-
-                // Update zones list
-                 const zonesContainer = document.getElementById('zones-list');
-                 zonesContainer.innerHTML = ''; // Clear previous
-                 if (data.zones && data.zones.length > 0) {
-                      data.zones.forEach(zone => {
-                          const li = document.createElement('li');
-                          li.className = `list-group-item ${zone.active ? 'list-group-item-success' : 'list-group-item-secondary'}`;
-                          li.textContent = `${zone.name} (${zone.active ? 'Active' : 'Inactive'})`;
-                          zonesContainer.appendChild(li);
-                      });
-                 } else {
-                      zonesContainer.innerHTML = '<li class="list-group-item text-muted">No zones configured.</li>';
-                 }
-
-
-                // Prepare data for Chart.js
-                if (data.time_series) {
-                    const labels = Object.keys(data.time_series);
-                    const datasets = labels.map(label => {
-                         // Chart.js expects {x: timestamp, y: value} objects
-                         return data.time_series[label].map(point => ({
-                             x: new Date(point.time), // Parse ISO string
-                             y: point.count
-                         }));
-                    });
-
-                    // Only initialize/update chart if we have data
-                    if (labels.length > 0 && datasets.some(ds => ds.length > 0)) {
-                        initializeChart(labels, datasets);
-                    }
-                }
-
-
-            } catch (error) {
-                console.error("Error fetching analytics:", error);
-            }
-        }
-
-        // Fetch and update alerts
-        async function fetchAlerts() {
-            try {
-                const response = await fetch(`${API_BASE}alerts`);
-                const alerts = await response.json();
-                const alertsContainer = document.getElementById('alerts-container');
-                alertsContainer.innerHTML = ''; // Clear previous
-
-                if (alerts && alerts.length > 0) {
-                    // Sort alerts by timestamp (newest first)
-                    alerts.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-
-                    alerts.forEach(alert => {
-                        const alertDiv = document.createElement('div');
-                        alertDiv.className = `alert-item alert-${alert.severity || 'info'}`;
-                        const alertTime = new Date(alert.timestamp).toLocaleTimeString();
-                        alertDiv.innerHTML = `
-                            <strong>[${alert.type}]</strong> ${alert.message}
-                            <br><small class="text-muted">${alertTime}</small>
-                        `;
-                        alertsContainer.appendChild(alertDiv);
-                    });
-                } else {
-                    alertsContainer.innerHTML = '<p class="text-muted">No alerts yet.</p>';
-                }
-            } catch (error) {
-                console.error("Error fetching alerts:", error);
-                document.getElementById('alerts-container').innerHTML = '<p class="text-danger">Error loading alerts.</p>';
-            }
-        }
-
-        // --- Initial Load and Periodic Updates ---
-        document.addEventListener('DOMContentLoaded', () => {
-            // Fetch data immediately
-            fetchAnalytics();
-            fetchAlerts();
-
-            // Set up periodic updates (e.g., every 2 seconds)
-            setInterval(fetchAnalytics, 2000);
-            setInterval(fetchAlerts, 5000); // Alerts can update less frequently
-        });
 
     </script>
 </body>
