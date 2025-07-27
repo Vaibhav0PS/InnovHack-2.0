@@ -8,7 +8,6 @@ from collections import defaultdict, deque
 import os
 import logging
 from ultralytics import YOLO
-import torch
 from datetime import datetime, timedelta
 import json
 
@@ -26,7 +25,7 @@ SEGMENTATION = False
 
 # Advanced analytics configuration
 ANALYTICS_WINDOW = 300  # 5 minutes of data retention
-ALERT_THRESHOLD = {'person': 10, 'car': 5}  # Example thresholds
+ALERT_THRESHOLD = {'person': 5, 'car': 3}
 ZONE_DETECTION = True
 
 # Global variables
@@ -44,37 +43,17 @@ detection_zones = [
 
 # Model and device initialization
 model = None
-device = 'cpu'
 
 def initialize_model():
-    global model, device
+    """Initialize YOLOv11 model with proper error handling"""
+    global model
     try:
-        if POSE_ESTIMATION:
-            model = YOLO('yolo11n-pose.pt')
-            print("✓ YOLOv11 Pose model loaded")
-        elif SEGMENTATION:
-            model = YOLO('yolo11n-seg.pt')
-            print("✓ YOLOv11 Segmentation model loaded")
-        else:
-            model = YOLO('yolo11n.pt')
-            print("✓ YOLOv11 Detection model loaded")
-
-        model.fuse()
-        model.eval()
-        device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        model.to(device)
-
-        if device != 'cpu':
-            try:
-                model.half()
-                print("✓ FP16 inference enabled")
-            except Exception as e:
-                print(f"- FP16 not enabled: {e}")
-
-        print(f"✓ Using device: {device}")
+        # Load the OpenVINO model from the exported directory
+        model = YOLO("yolo11n_openvino_model/")
+        print("✓ OpenVINO model loaded")
         return True
     except Exception as e:
-        print(f"✗ Error loading YOLOv11 model: {e}")
+        print(f"✗ Error loading OpenVINO model: {e}")
         return False
 
 # Thread-safe data structures
@@ -86,6 +65,7 @@ analytics_queue = queue.Queue(maxsize=100)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 class ObjectTracker:
+    """Enhanced object tracking using YOLOv11's built-in tracking"""
     def __init__(self):
         self.tracked_objects = {}
         self.next_id = 0
@@ -132,27 +112,15 @@ def detect_objects_yolov11(frame):
     if model is None:
         return []
     try:
-        img_tensor = torch.from_numpy(frame).to(device)
-        img_tensor = img_tensor.permute(2, 0, 1).unsqueeze(0).float() / 255.0
-        if use_half:
-            img_tensor = img_tensor.half()
-
-        if TRACKING_ENABLED:
-            results = model.track(img_tensor, conf=CONFIDENCE_THRESHOLD, iou=IOU_THRESHOLD,
-                                persist=True, tracker="bytetrack.yaml", verbose=False)
-        else:
-            results = model.predict(img_tensor, conf=CONFIDENCE_THRESHOLD, iou=IOU_THRESHOLD, verbose=False)
-
+        results = model(frame, conf=CONFIDENCE_THRESHOLD, iou=IOU_THRESHOLD, verbose=False)
         detected_objects = []
         current_time = time.time()
-
         for result in results:
             if result.boxes is not None and len(result.boxes) > 0:
                 boxes = result.boxes.xyxy.cpu().numpy()
                 confidences = result.boxes.conf.cpu().numpy()
                 classes = result.boxes.cls.cpu().numpy()
                 track_ids = result.boxes.id.cpu().numpy() if result.boxes.id is not None else [None] * len(boxes)
-
                 for i in range(len(boxes)):
                     box = boxes[i]
                     conf = confidences[i]
@@ -160,13 +128,11 @@ def detect_objects_yolov11(frame):
                     track_id = int(track_ids[i]) if track_ids[i] is not None else None
                     x1, y1, x2, y2 = box
                     center_x, center_y = (x1 + x2) / 2, (y1 + y2) / 2
-
                     zones_detected = []
                     if ZONE_DETECTION:
                         for zone in detection_zones:
                             if zone['active'] and point_in_polygon((center_x, center_y), zone['polygon']):
                                 zones_detected.append(zone['name'])
-
                     detection_data = {
                         'label': model.names[cls],
                         'confidence': float(conf),
@@ -176,9 +142,7 @@ def detect_objects_yolov11(frame):
                         'zones': zones_detected,
                         'timestamp': current_time
                     }
-
                     detected_objects.append(detection_data)
-
         return detected_objects
     except Exception as e:
         logging.error(f"YOLOv11 detection error: {e}")
@@ -190,7 +154,6 @@ def generate_alerts(detections):
     detection_counts = defaultdict(int)
     for det in detections:
         detection_counts[det['label']] += 1
-
     for obj_class, count in detection_counts.items():
         if obj_class in ALERT_THRESHOLD and count >= ALERT_THRESHOLD[obj_class]:
             alert = {
@@ -201,7 +164,6 @@ def generate_alerts(detections):
                 'data': {'class': obj_class, 'count': count}
             }
             alerts.append(alert)
-
     for det in detections:
         for zone in det['zones']:
             if 'Restricted' in zone:
@@ -213,7 +175,6 @@ def generate_alerts(detections):
                     'data': {'class': det['label'], 'zone': zone, 'track_id': det['track_id']}
                 }
                 alerts.append(alert)
-
     return alerts
 
 def video_capture_thread():
@@ -268,15 +229,18 @@ def analytics_thread():
         detections = detect_objects_yolov11(frame)
         alerts = generate_alerts(detections)
 
+        # Define current_time before using it
+        current_time = time.time()
+
         with analytics_lock:
-            cutoff_time = time.time() - ANALYTICS_WINDOW
+            cutoff_time = current_time - ANALYTICS_WINDOW
             for key in list(analytics_data.keys()):
                 analytics_data[key] = [(t, v) for t, v in analytics_data[key] if t > cutoff_time]
             current_detections.clear()
             for det in detections:
                 label = det['label']
                 current_detections[label] += 1
-                analytics_data[label].append((time.time(), 1))
+                analytics_data[label].append((current_time, 1))  # Use current_time here
             for alert in alerts:
                 alert_history.append(alert)
 
@@ -298,11 +262,11 @@ def analytics_thread():
             conf = det['confidence']
             track_id = det['track_id']
 
-            color = (0, 255, 0)
+            color = (0, 255, 0)  # Green by default
             if 'Restricted Area' in det['zones']:
-                color = (0, 0, 255)
+                color = (0, 0, 255)  # Red for restricted areas
             elif det['zones']:
-                color = (0, 255, 255)
+                color = (0, 255, 255)  # Yellow for other zones
 
             cv2.rectangle(annotated_frame, (x, y), (x + w, y + h), color, 2)
             label_text = f"{label} {conf:.2f}"
@@ -385,8 +349,8 @@ def get_analytics():
             'total_objects': sum(current_detections.values()),
             'active_tracks': len([tid for tid, traj in object_trajectories.items()
                                  if traj and current_time - traj[-1][2] < 5]),
-            'device': device,
-            'model_type': 'YOLOv11' if model else 'No Model',
+            'device': 'OpenVINO',  # Updated to reflect OpenVINO usage
+            'model_type': 'YOLOv11',
             'zones': detection_zones
         }
     return jsonify(response_data)
@@ -423,15 +387,35 @@ def config():
         logging.error(f"Error in config endpoint: {e}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/health')
+def health_check():
+    """Health check endpoint"""
+    try:
+        status = {
+            'status': 'healthy',
+            'model_loaded': model is not None,
+            'device': 'OpenVINO',  # Updated to reflect OpenVINO usage
+            'queue_sizes': {
+                'frame_queue': frame_queue.qsize(),
+                'processed_frame_queue': processed_frame_queue.qsize()
+            },
+            'timestamp': datetime.now().isoformat()
+        }
+        return jsonify(status)
+    except Exception as e:
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
 if __name__ == "__main__":
     print("🚀 Starting Advanced YOLOv11 Video Analytics Dashboard...")
     model_loaded = initialize_model()
     if not model_loaded:
-        print("⚠️  Running without YOLOv11 model - limited functionality")
-    print(f"💡 Device: {device}")
-    print(f"🎯 Model: {'YOLOv11' if model else 'No Model'} {'with Pose' if POSE_ESTIMATION else ''} {'with Segmentation' if SEGMENTATION else ''}")
+        print("⚠️  Running without OpenVINO model - limited functionality")
+    print(f"💡 Device: OpenVINO")
+    print(f"🎯 Model: YOLOv11")
     print(f"📊 Features: Tracking={TRACKING_ENABLED}, Zones={ZONE_DETECTION}")
     threading.Thread(target=video_capture_thread, daemon=True, name="VideoCapture").start()
     threading.Thread(target=analytics_thread, daemon=True, name="Analytics").start()
+    print("✓ Background threads started")
     print("🎯 Dashboard running at: http://localhost:5000")
+    print("🏥 Health check available at: http://localhost:5000/health")
     app.run(host='0.0.0.0', port=5000, threaded=True, debug=False)
